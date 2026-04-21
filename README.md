@@ -15,9 +15,17 @@ NvJpeg - Python
 * Nvidia Jetson OS
 
 ## Install
+
+### Install this fork directly from GitHub
 ```shell
-pip install pynvjpeg
+python -m pip install --upgrade pip
+python -m pip install "git+https://github.com/<your-user>/nvjpeg-python-msvc.git"
 ```
+
+### Windows notes
+- Install CUDA Toolkit and set `CUDA_PATH` (for example: `C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.4`).
+- Build links against `%CUDA_PATH%\\lib\\x64` (`nvjpeg.lib`, `cudart.lib`).
+- Ensure CUDA runtime DLLs are on `PATH` when importing/using `nvjpeg`.
 
 ## Usage
 
