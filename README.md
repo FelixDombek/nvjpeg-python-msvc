@@ -26,6 +26,7 @@ python -m pip install "git+https://github.com/FelixDombek/nvjpeg-python-msvc.git
 - Install CUDA Toolkit and set `CUDA_PATH` (for example: `C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.4`).
 - Build links against `%CUDA_PATH%\\lib\\x64` (`nvjpeg.lib`, `cudart.lib`).
 - Ensure CUDA runtime DLLs are on `PATH` when importing/using `nvjpeg`.
+- The package now adds common DLL directories automatically on import (`CUDA_PATH\\bin`, `sys.base_prefix`, and Python executable directory).
 
 ## Usage
 
@@ -57,11 +58,26 @@ img = nj.decode(jpeg_bytes)
 # like cv2.imdecode(variable)
 ```
 
+Decode output order can be selected explicitly:
+
+```python
+img_rgb = nj.decode(jpeg_bytes, "rgb")
+img_bgr = nj.decode(jpeg_bytes, "bgr")
+```
+
+Or controlled with env var (useful as a rollout flag):
+
+```shell
+set PYNVJPEG_DECODE_OUTPUT=rgb
+```
+
 #### Encode image numpy array to bytes
 ```python
 jpeg_bytes = nj.encode(img)
 # or with jpeg quality
 # jpeg_bytes = nj.encode(img, 70)
+# or specify input order explicitly
+# jpeg_bytes = nj.encode(img, quality=70, input="rgb")
 # int quality default 70, mean jpeg quality
 
 # like cv2.imencode(".jpg", variable)[1]

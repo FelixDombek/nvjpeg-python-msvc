@@ -4,7 +4,7 @@ import platform
 from pathlib import Path
 
 import numpy
-from setuptools import Extension, setup
+from setuptools import Extension, find_packages, setup
 
 ROOT = Path(__file__).parent
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -29,7 +29,7 @@ def build_extension() -> Extension:
     if system == "Linux" and Path("/usr/src/jetson_multimedia_api").exists():
         os.system("make lib_cuda")
         return Extension(
-            "nvjpeg",
+            "nvjpeg._nvjpeg",
             [
                 "nvjpeg-python.cpp",
                 "src/jetson/JpegCoder.cpp",
@@ -63,7 +63,7 @@ def build_extension() -> Extension:
         extra_compile_args = ["-std=c++17"]
 
     return Extension(
-        "nvjpeg",
+        "nvjpeg._nvjpeg",
         sources,
         include_dirs=["include", numpy.get_include(), str(cuda_include)],
         define_macros=[("JPEGCODER_ARCH", "x86")],
@@ -77,6 +77,7 @@ setup(
     name="pynvjpeg",
     version="0.0.14",
     ext_modules=[build_extension()],
+    packages=find_packages(),
     author="Usingnet",
     author_email="developer@usingnet.com",
     license="MIT",

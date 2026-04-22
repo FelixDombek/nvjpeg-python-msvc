@@ -91,7 +91,7 @@ void JpegCoder::ensureThread(long threadIdent){
     }
 }
 
-JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
+JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length, nvjpegOutputFormat_t outputFormat){
     NvJPEGDecoder* nv_decoder = JPEGCODER_GLOBAL_CONTEXT->nv_decoder;
 
     uint32_t pixfmt, width, height;
@@ -137,12 +137,21 @@ JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
     if(eCopy != cudaSuccess){
         throw JpegCoderError(error_code, cudaGetErrorString(eCopy));
     }
+    bool rgb_output = (outputFormat == NVJPEG_OUTPUT_RGBI);
     switch(subsampling){
         case JPEGCODER_CSS_420:
-            YUV420ToColor32<BGRA32>((uint8_t*)nv12Frame, width, (uint8_t *)dpFrame, 4 * width, width, height);
+            if (rgb_output) {
+                YUV420ToColor32<RGBA32>((uint8_t*)nv12Frame, width, (uint8_t *)dpFrame, 4 * width, width, height);
+            } else {
+                YUV420ToColor32<BGRA32>((uint8_t*)nv12Frame, width, (uint8_t *)dpFrame, 4 * width, width, height);
+            }
         break;
         case JPEGCODER_CSS_444:
-            YUV444ToColor32<BGRA32>((uint8_t*)nv12Frame, width, (uint8_t *)dpFrame, 4 * width, width, height);
+            if (rgb_output) {
+                YUV444ToColor32<RGBA32>((uint8_t*)nv12Frame, width, (uint8_t *)dpFrame, 4 * width, width, height);
+            } else {
+                YUV444ToColor32<BGRA32>((uint8_t*)nv12Frame, width, (uint8_t *)dpFrame, 4 * width, width, height);
+            }
         break;
         default:
             throw JpegCoderError(pixfmt, "Unknown pixfmt");
@@ -158,7 +167,7 @@ JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
     return imgdesc;
 }
 
-JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
+JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality, nvjpegInputFormat_t inputFormat){
     NvJPEGEncoder *nv_encodere = JPEGCODER_GLOBAL_CONTEXT->nv_encoder;
 
     NvBuffer buffer(V4L2_PIX_FMT_YUV420M, img->width, img->height, 0);
@@ -176,7 +185,23 @@ JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
     if(error_code != CUDA_SUCCESS){
         throw JpegCoderError(error_code, "cuMemAlloc Error");
     }
-    cudaError_t eCopy = cudaMemcpy((void*)bgrFrame, img->img, img->width * img->height * 3, cudaMemcpyHostToDevice);
+    size_t bgr_size = img->width * img->height * 3;
+    unsigned char* bgr_host = (unsigned char*)img->img;
+    unsigned char* converted = nullptr;
+    if (inputFormat == NVJPEG_INPUT_RGBI) {
+        converted = (unsigned char*)malloc(bgr_size);
+        for (size_t i = 0; i < bgr_size; i += 3) {
+            converted[i] = bgr_host[i + 2];
+            converted[i + 1] = bgr_host[i + 1];
+            converted[i + 2] = bgr_host[i];
+        }
+        bgr_host = converted;
+    }
+
+    cudaError_t eCopy = cudaMemcpy((void*)bgrFrame, bgr_host, bgr_size, cudaMemcpyHostToDevice);
+    if (converted != nullptr) {
+        free(converted);
+    }
     if(eCopy != cudaSuccess){
         throw JpegCoderError(error_code, cudaGetErrorString(eCopy));
     }
@@ -210,4 +235,3 @@ JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
     JpegCoderBytes* jpegData = new JpegCoderBytes(out_buf, out_buf_size);
     return jpegData;
 }
-

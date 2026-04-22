@@ -5,6 +5,7 @@
 #include <memory.h>
 #include <iostream>
 #include <exception>
+#include <nvjpeg.h>
 
 class JpegCoderError: public std::runtime_error{
 protected:
@@ -83,7 +84,7 @@ public:
     JpegCoder();
     ~JpegCoder();
     void ensureThread(long threadIdent);
-    JpegCoderImage* decode(const unsigned char* jpegData, size_t length);
-    JpegCoderBytes* encode(JpegCoderImage* img, int quality);
+    JpegCoderImage* decode(const unsigned char* jpegData, size_t length, nvjpegOutputFormat_t outputFormat = NVJPEG_OUTPUT_BGRI);
+    JpegCoderBytes* encode(JpegCoderImage* img, int quality, nvjpegInputFormat_t inputFormat = NVJPEG_INPUT_BGRI);
     static void cleanUpEnv();
 };

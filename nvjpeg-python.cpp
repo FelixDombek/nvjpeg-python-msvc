@@ -6,6 +6,7 @@
 #include <Python.h>
 #include <pythread.h>
 #include <structmember.h>
+#include <string.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 #include "JpegCoder.hpp"
@@ -50,18 +51,35 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
     JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
     
     Py_buffer pyBuf;
+    const char* output = NULL;
     unsigned char* jpegData;
     Py_ssize_t len;
-    if(!PyArg_ParseTuple(Argvs, "y*", &pyBuf)){
+    if(!PyArg_ParseTuple(Argvs, "y*|s", &pyBuf, &output)){
         PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should jpegData byte string!");
         return NULL;
     }
     jpegData = (unsigned char*)pyBuf.buf;
     len = pyBuf.len;
+    if (output == NULL) {
+        output = getenv("PYNVJPEG_DECODE_OUTPUT");
+        if (output == NULL) {
+            output = "bgr";
+        }
+    }
+
+    nvjpegOutputFormat_t output_format = NVJPEG_OUTPUT_BGRI;
+    if (strcmp(output, "rgb") == 0) {
+        output_format = NVJPEG_OUTPUT_RGBI;
+    } else if (strcmp(output, "bgr") != 0) {
+        PyBuffer_Release(&pyBuf);
+        PyErr_SetString(PyExc_ValueError, "decode output must be 'rgb' or 'bgr'");
+        return NULL;
+    }
+
     JpegCoderImage* img;
     try{
         m_handle->ensureThread(PyThread_get_thread_ident());
-        img = m_handle->decode((const unsigned char*)jpegData, (size_t)len);
+        img = m_handle->decode((const unsigned char*)jpegData, (size_t)len, output_format);
         PyBuffer_Release(&pyBuf);
     }catch(JpegCoderError e){
         PyBuffer_Release(&pyBuf);
@@ -79,15 +97,8 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
     return temp;
 }
 
-static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
+static PyObject* NvJpeg_encode_impl(NvJpeg* Self, PyArrayObject *vecin, unsigned int quality, const char* input)
 {
-    PyArrayObject *vecin;
-    unsigned int quality = 70;
-    if (!PyArg_ParseTuple(Argvs, "O!|I", &PyArray_Type, &vecin, &quality)){
-        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array!");
-        return NULL;
-    }
-
     if (NULL == vecin){
         Py_INCREF(Py_None);
         return Py_None;
@@ -102,29 +113,56 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
         quality = 100;
     }
 
+    nvjpegInputFormat_t input_format = NVJPEG_INPUT_BGRI;
+    if (strcmp(input, "rgb") == 0) {
+        input_format = NVJPEG_INPUT_RGBI;
+    } else if (strcmp(input, "bgr") != 0) {
+        PyErr_SetString(PyExc_ValueError, "encode input must be 'rgb' or 'bgr'");
+        return NULL;
+    }
+
     JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
 
     PyObject* bytes = PyObject_CallMethod((PyObject*)vecin, "tobytes", NULL);
+    if (bytes == NULL) {
+        return NULL;
+    }
 
     Py_buffer pyBuf;
+    if (!PyArg_Parse(bytes, "y*", &pyBuf)) {
+        Py_DECREF(bytes);
+        return NULL;
+    }
 
-    unsigned char* buffer;
-    PyArg_Parse(bytes, "y*", &pyBuf);
-    buffer = (unsigned char*)pyBuf.buf;
+    unsigned char* buffer = (unsigned char*)pyBuf.buf;
     auto img = new JpegCoderImage(PyArray_DIM(vecin, 1), PyArray_DIM(vecin, 0), 3, JPEGCODER_CSS_444);
     img->fill(buffer);
     PyBuffer_Release(&pyBuf);
     Py_DECREF(bytes);
 
     m_handle->ensureThread(PyThread_get_thread_ident());
-    auto data = m_handle->encode(img, quality);
+    auto data = m_handle->encode(img, quality, input_format);
 
     PyObject* rtn = PyBytes_FromStringAndSize((const char*)data->data, data->size);
 
     delete(data);
     delete(img);
-    
+
     return rtn;
+}
+
+static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs, PyObject* Kwds)
+{
+    PyArrayObject *vecin;
+    unsigned int quality = 70;
+    const char* input = "bgr";
+    static char *kwlist[] = {(char*)"image", (char*)"quality", (char*)"input", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(Argvs, Kwds, "O!|Is", kwlist, &PyArray_Type, &vecin, &quality, &input)){
+        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array!");
+        return NULL;
+    }
+    return NvJpeg_encode_impl(Self, vecin, quality, input);
 }
 
 static PyObject* NvJpeg_read(NvJpeg* Self, PyObject* Argvs)
@@ -181,12 +219,14 @@ static PyObject* NvJpeg_read(NvJpeg* Self, PyObject* Argvs)
     return temp;
 }
 
-static PyObject* NvJpeg_write(NvJpeg* Self, PyObject* Argvs)
+static PyObject* NvJpeg_write(NvJpeg* Self, PyObject* Argvs, PyObject* Kwds)
 {
     unsigned char* jpegFile;
     PyArrayObject *vecin;
     unsigned int quality = 70;
-    if (!PyArg_ParseTuple(Argvs, "sO!|I", &jpegFile, &PyArray_Type, &vecin, &quality)){
+    const char* input = "bgr";
+    static char *kwlist[] = {(char*)"path", (char*)"image", (char*)"quality", (char*)"input", NULL};
+    if (!PyArg_ParseTupleAndKeywords(Argvs, Kwds, "sO!|Is", kwlist, &jpegFile, &PyArray_Type, &vecin, &quality, &input)){
         PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array!");
         return NULL;
     }
@@ -203,9 +243,7 @@ static PyObject* NvJpeg_write(NvJpeg* Self, PyObject* Argvs)
         return NULL;
     }
     
-    PyObject* passAvgs = PyTuple_GetSlice(Argvs, 1, 2);
-    PyObject* encodeResponse = NvJpeg_encode(Self, passAvgs);
-    Py_DECREF(passAvgs);
+    PyObject* encodeResponse = NvJpeg_encode_impl(Self, vecin, quality, input);
     if(encodeResponse == NULL){
         fclose(fp);
         return NULL;
@@ -233,10 +271,10 @@ static PyObject* NvJpeg_write(NvJpeg* Self, PyObject* Argvs)
 
 static PyMethodDef NvJpeg_MethodMembers[] =
 {
-        {"encode",  (PyCFunction)NvJpeg_encode,  METH_VARARGS,  "encode jpge"},
+        {"encode",  (PyCFunction)NvJpeg_encode,  METH_VARARGS | METH_KEYWORDS,  "encode jpeg"},
         {"decode", (PyCFunction)NvJpeg_decode, METH_VARARGS,  "decode jpeg"},
         {"read", (PyCFunction)NvJpeg_read, METH_VARARGS,  "read jpeg file and decode"},
-        {"write", (PyCFunction)NvJpeg_write, METH_VARARGS,  "encode and write jpeg file"},
+        {"write", (PyCFunction)NvJpeg_write, METH_VARARGS | METH_KEYWORDS,  "encode and write jpeg file"},
         {NULL, NULL, 0, NULL}
 };
 
@@ -265,7 +303,7 @@ static PyModuleDef ModuleInfo =
 };
 
 PyMODINIT_FUNC
-PyInit_nvjpeg(void) {
+PyInit__nvjpeg(void) {
     PyObject * pReturn = NULL;
 
     NvJpeg_ClassInfo.tp_dealloc   = NvJpeg_Destruct;
