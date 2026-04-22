@@ -85,7 +85,7 @@ void JpegCoder::ensureThread(long threadIdent){
     ;
 }
 
-JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
+JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length, nvjpegOutputFormat_t outputFormat){
     nvjpegHandle_t nv_handle = JPEGCODER_GLOBAL_CONTEXT->nv_handle;
     nvjpegJpegState_t nv_statue = JPEGCODER_GLOBAL_CONTEXT->nv_statue;
 
@@ -96,7 +96,7 @@ JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
     nvjpegGetImageInfo(nv_handle, jpegData, length, &nComponent, &subsampling, widths, heights);
 
     JpegCoderImage* imgdesc = new JpegCoderImage(widths[0], heights[0], nComponent, ChromaSubsampling_Covert_NvJpegToJpegCoder(subsampling));
-    int nReturnCode = nvjpegDecode(nv_handle, nv_statue, jpegData, length, NVJPEG_OUTPUT_BGRI, (nvjpegImage_t *)(imgdesc->img), NULL);
+    int nReturnCode = nvjpegDecode(nv_handle, nv_statue, jpegData, length, outputFormat, (nvjpegImage_t *)(imgdesc->img), NULL);
 
     if (NVJPEG_STATUS_SUCCESS != nReturnCode){
         throw JpegCoderError(nReturnCode, "NvJpeg Decoder Error");
@@ -105,7 +105,7 @@ JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
     return imgdesc;
 }
 
-JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
+JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality, nvjpegInputFormat_t inputFormat){
     nvjpegHandle_t nv_handle = JPEGCODER_GLOBAL_CONTEXT->nv_handle;
     nvjpegEncoderState_t nv_enc_state = JPEGCODER_GLOBAL_CONTEXT->nv_enc_state;
     nvjpegEncoderParams_t nv_enc_params;
@@ -116,7 +116,7 @@ JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
     nvjpegEncoderParamsSetOptimizedHuffman(nv_enc_params, 1, NULL);
     nvjpegEncoderParamsSetSamplingFactors(nv_enc_params, ChromaSubsampling_Covert_JpegCoderToNvJpeg(img->subsampling), NULL);
 
-    int nReturnCode = nvjpegEncodeImage(nv_handle, nv_enc_state, nv_enc_params, (nvjpegImage_t*)(img->img), NVJPEG_INPUT_BGRI, (int)img->width, (int)img->height, NULL);
+    int nReturnCode = nvjpegEncodeImage(nv_handle, nv_enc_state, nv_enc_params, (nvjpegImage_t*)(img->img), inputFormat, (int)img->width, (int)img->height, NULL);
     if (NVJPEG_STATUS_SUCCESS != nReturnCode){
         throw JpegCoderError(nReturnCode, "NvJpeg Encoder Error");
     }
@@ -130,4 +130,3 @@ JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
     nvjpegEncoderParamsDestroy(nv_enc_params);
     return jpegData;
 }
-
