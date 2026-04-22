@@ -51,7 +51,7 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
     
     Py_buffer pyBuf;
     unsigned char* jpegData;
-    int len;
+    Py_ssize_t len;
     if(!PyArg_ParseTuple(Argvs, "y*", &pyBuf)){
         PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should jpegData byte string!");
         return NULL;
@@ -61,7 +61,7 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
     JpegCoderImage* img;
     try{
         m_handle->ensureThread(PyThread_get_thread_ident());
-        img = m_handle->decode((const unsigned char*)jpegData, len);
+        img = m_handle->decode((const unsigned char*)jpegData, (size_t)len);
         PyBuffer_Release(&pyBuf);
     }catch(JpegCoderError e){
         PyBuffer_Release(&pyBuf);
@@ -213,14 +213,21 @@ static PyObject* NvJpeg_write(NvJpeg* Self, PyObject* Argvs)
 
     char* jpegData;
     Py_ssize_t jpegDataSize;
-    PyBytes_AsStringAndSize(encodeResponse, &jpegData, &jpegDataSize);
-    ssize_t write_size = fwrite(jpegData, 1, jpegDataSize, fp);
-    if(write_size != jpegDataSize){
+    if (PyBytes_AsStringAndSize(encodeResponse, &jpegData, &jpegDataSize) < 0) {
+        Py_DECREF(encodeResponse);
+        fclose(fp);
+        return NULL;
+    }
+    size_t write_size = fwrite(jpegData, 1, (size_t)jpegDataSize, fp);
+    if(write_size != (size_t)jpegDataSize){
         PyErr_Format(PyExc_IOError, "Write file \"%s\" with error", jpegFile);
+        Py_DECREF(encodeResponse);
+        fclose(fp);
+        return NULL;
     }
     Py_DECREF(encodeResponse);
     fclose(fp);
-    return Py_BuildValue("l", (long)jpegDataSize);
+    return Py_BuildValue("n", jpegDataSize);
 }
 
 
