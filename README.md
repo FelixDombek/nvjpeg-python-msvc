@@ -5,8 +5,8 @@ NvJpeg - Python
 * nvjpeg
 * cuda >= 10.2
 * numpy >= 1.7
-* python >= 3.6
-* gcc >= 7.5
+* python >= 3.8
+* gcc >= 7.5 / MSCV
 * make >= 4.1
 
 ## System
@@ -19,7 +19,7 @@ NvJpeg - Python
 ### Install this fork directly from GitHub
 ```shell
 python -m pip install --upgrade pip
-python -m pip install "git+https://github.com/<your-user>/nvjpeg-python-msvc.git"
+python -m pip install "git+https://github.com/FelixDombek/nvjpeg-python-msvc.git"
 ```
 
 ### Windows notes
